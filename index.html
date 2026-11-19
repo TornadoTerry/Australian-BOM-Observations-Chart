@@ -25,6 +25,22 @@
   .warn{color:#a35f00!important} .err{color:#c0262d!important}
   body.drawing canvas{cursor:crosshair!important}
 
+  /* contours box */
+  .cbox{position:relative}
+  #cBtn.on{background:#1f4e8c;border-color:#1f4e8c;color:#fff}
+  #cPanel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:6;background:#fff;border:1px solid #b8bec5;border-radius:6px;
+    box-shadow:0 3px 12px rgba(0,0,0,.18);padding:8px 10px;min-width:260px}
+  .cbox.open #cPanel{display:block}
+  #cPanel label{display:flex;align-items:center;gap:7px;padding:3px 0;white-space:nowrap}
+  .cl{display:inline-block;width:24px;border-top:2px solid}
+  .cl.dash{border-top-style:dashed} .cl.dot{border-top-style:dotted;border-top-width:3px}
+  .ctitle{display:none;font-weight:700;margin-bottom:4px}
+  .cnote{color:#69737d;font-size:11px;margin-top:4px;white-space:normal;max-width:260px}
+  body.phone #cBtn{display:none}
+  body.phone #cPanel{display:block;position:static;box-shadow:none;border-radius:8px;padding:10px 12px;min-width:0}
+  body.phone .ctitle{display:block;font-size:16px}
+  body.phone .cnote{font-size:13px;max-width:none}
+
   /* drawing tools */
   #drawTools{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
   .sw{width:24px;height:24px;border-radius:50%;padding:0;background:var(--c);border:2px solid #fff;box-shadow:0 0 0 1px #9aa2ab}
@@ -112,7 +128,7 @@
   <div class="grp" id="stateBtns"><span class="lbl">Area:</span></div>
   <div class="grp"><span class="lbl">Close-up:</span><select id="closeSel"></select></div>
   <div id="deskSlot"></div>
-  <div class="grp"><button id="dDraw" title="Draw on the map">✏️ Draw</button><span id="deskDrawSlot"></span></div>
+  <div class="grp"><button id="dDraw" title="Draw on the map (cleared when you stop drawing)">✏️ Draw</button><span id="deskDrawSlot"></span></div>
   <span id="status">loading…</span>
 </div>
 <!-- phone top bar -->
@@ -129,6 +145,16 @@
 
 <!-- shared settings (sits in the desktop bar or the phone menu) -->
 <div id="controls">
+  <div class="cbox" id="cbox">
+    <button id="cBtn" type="button" title="Isobars, dew point and temperature lines">Contours ▾</button>
+    <div id="cPanel">
+      <div class="ctitle">Contours</div>
+      <label><input type="checkbox" data-ct="iso"><span class="cl" style="border-color:#1f3fbf"></span>Isobars (every 2 hPa)</label>
+      <label><input type="checkbox" data-ct="dew"><span class="cl dash" style="border-color:#0a8a2a"></span>Dew point (every 3 °C)</label>
+      <label><input type="checkbox" data-ct="temp"><span class="cl dot" style="border-color:#d0121b"></span>Temperature (every 3 °C)</label>
+      <div class="cnote">Drawn from each station's latest report in the last hour. Blank areas are too far from any station to draw.</div>
+    </div>
+  </div>
   <label><input type="checkbox" id="cTowns"> Town names</label>
   <label title="Off: stations are thinned out so they don't pile up, and more appear as you zoom in"><input type="checkbox" id="cAll"> Show all stations</label>
   <select id="cSize" title="Size of the station plots">
@@ -146,6 +172,7 @@
   <span>Wind barbs in knots: flag 50, full 10, half 5</span>
   <span>Filled circle = cloud cover</span>
   <span><b style="color:#9aa1a8">Grey circle</b> = no report in 2 h</span>
+  <span id="legC" hidden>Contours: <b style="color:#1f3fbf">blue</b> isobars hPa, <b style="color:#0a8a2a">green dashed</b> dew point °C, <b style="color:#d0121b">red dotted</b> temperature °C</span>
   <span>Data: Bureau of Meteorology</span>
 </div>
 <div id="tip" class="det"></div>
@@ -161,7 +188,8 @@
     <div><b>Black</b> top-right: sea-level pressure hPa</div>
     <div>Wind barbs in knots: flag 50, full line 10, half line 5</div>
     <div>Filled circle = cloud cover · Grey circle = no report in 2 h</div>
-    <div>Tap a station for its details. Tap ✏️ to draw; two fingers still move and zoom the map while drawing.</div>
+    <div>Contours: <b style="color:#1f3fbf">blue</b> isobars (hPa), <b style="color:#0a8a2a">green dashed</b> dew point, <b style="color:#d0121b">red dotted</b> temperature (°C).</div>
+    <div>Tap a station for its details. Tap ✏️ to draw; two fingers still move and zoom the map. Drawings clear when you tap Done.</div>
     <div>Data: Bureau of Meteorology.</div>
   </div>
 </div>
@@ -182,6 +210,163 @@
 </div>
 <div id="card" class="det"><button class="x" aria-label="Close">×</button><div id="cardBody"></div></div>
 
+<script type="text/plain" id="anSrc">
+// ---- contour analysis: runs in a background thread so the map never waits for it ----
+// Station values -> smooth grid (two-pass Barnes analysis, the standard method for surface obs),
+// smoothing radius adapting to station density; areas far from any station are left blank.
+const D2R = Math.PI / 180;
+const mercY = lat => Math.log(Math.tan(Math.PI / 4 + lat * D2R / 2)) / D2R;
+const AN = { lon0: 108, lat0: -47, d: 0.25, nx: 209, ny: 165 };   // 108E..160E, 47S..6S
+function binStations(list) {
+  const bins = new Map();
+  for (const p of list) {
+    const k = Math.floor(p.lon) * 1000 + Math.floor(p.lat + 100);
+    if (!bins.has(k)) bins.set(k, []); bins.get(k).push(p);
+  }
+  return bins;
+}
+function near(bins, lon, lat, rad, cb) {
+  const c = Math.cos(lat * D2R);
+  for (let a = Math.floor(lon - rad / c); a <= Math.floor(lon + rad / c); a++)
+    for (let b = Math.floor(lat - rad); b <= Math.floor(lat + rad); b++) {
+      const l = bins.get(a * 1000 + b + 100); if (!l) continue;
+      for (const p of l) { const dx = (p.lon - lon) * c, dy = p.lat - lat, d2 = dx * dx + dy * dy; if (d2 <= rad * rad) cb(p, d2); }
+    }
+}
+function knn(bins, lon, lat, k, skip) {   // [nearest, k-th nearest] distance in degrees
+  for (const rad of [0.8, 1.8, 4.0]) {
+    const best = [];
+    near(bins, lon, lat, rad, (p, d2) => {
+      if (p === skip) return;
+      if (best.length < k) { best.push(d2); if (best.length === k) best.sort((a, b) => a - b); }
+      else if (d2 < best[k - 1]) { best[k - 1] = d2; best.sort((a, b) => a - b); }
+    });
+    if (best.length >= k || rad === 4.0) {
+      if (!best.length) return [99, 99];
+      best.sort((a, b) => a - b);
+      return [Math.sqrt(best[0]), best.length >= k ? Math.sqrt(best[k - 1]) : 99];
+    }
+  }
+}
+function analyse(points, qc) {
+  let bins = binStations(points);
+  const rejected = [];
+  if (qc) for (const p of points) {   // drop readings that disagree badly with their neighbours
+    const nb = [];
+    near(bins, p.lon, p.lat, 2.5, q => { if (q !== p) nb.push(q.v); });
+    if (nb.length < 4) continue;
+    nb.sort((a, b) => a - b);
+    if (Math.abs(p.v - nb[nb.length >> 1]) > qc) { p.bad = true; rejected.push(p.i); }
+  }
+  const pts = points.filter(p => !p.bad);
+  bins = binStations(pts);
+  const { lon0, lat0, d, nx, ny } = AN, N = nx * ny;
+  const val = new Float32Array(N), mask = new Uint8Array(N);
+  const pass = (lon, lat, Ls, resid) => {
+    let sw = 0, sv = 0; const inv = 1 / (Ls * Ls);
+    near(bins, lon, lat, Ls * 3, (p, d2) => { const w = Math.exp(-d2 * inv); sw += w; sv += w * (resid ? p.r : p.v); });
+    return sw > 1e-6 ? sv / sw : NaN;
+  };
+  for (const p of pts) {
+    const L = Math.max(0.55, Math.min(2.6, knn(bins, p.lon, p.lat, 5, p)[1]));
+    p.r = p.v - pass(p.lon, p.lat, L, false); if (!isFinite(p.r)) p.r = 0;
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const lon = lon0 + i * d, lat = lat0 + j * d, idx = j * nx + i;
+    const [nearest, fifth] = knn(bins, lon, lat, 5);
+    if (nearest > 2.0 || fifth > 3.6) { mask[idx] = 1; continue; }
+    const Ls = Math.max(0.55, Math.min(2.6, fifth));
+    const v1 = pass(lon, lat, Ls, false), v2 = pass(lon, lat, Ls * Math.sqrt(0.3), true);
+    val[idx] = v1 + (isFinite(v2) ? v2 : 0);
+    if (!isFinite(val[idx])) mask[idx] = 1;
+  }
+  const sm = new Float32Array(val);
+  for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const k = j * nx + i; if (mask[k]) continue;
+    let s = val[k] * 4, w = 4;
+    for (const o of [-1, 1, -nx, nx]) if (!mask[k + o]) { s += val[k + o]; w++; }
+    sm[k] = s / w;
+  }
+  return { val: sm, mask, rejected };
+}
+function contour(grid, level) {   // marching squares -> joined, smoothed lines as flat [lon, mercY, ...]
+  const { lon0, lat0, d, nx, ny } = AN, v = grid.val, m = grid.mask;
+  const pt = new Map(), adj = new Map();
+  const ek = (i, j, vert) => ((j * nx + i) << 1) | vert;
+  const edgePt = (key, i, j, vert) => {
+    if (pt.has(key)) return;
+    const a = v[j * nx + i], b = vert ? v[(j + 1) * nx + i] : v[j * nx + i + 1], t = (level - a) / (b - a);
+    pt.set(key, vert ? [lon0 + i * d, lat0 + (j + t) * d] : [lon0 + (i + t) * d, lat0 + j * d]);
+  };
+  const link = (a, b) => { (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); };
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const bl = j * nx + i, br = bl + 1, tl = bl + nx, tr = tl + 1;
+    if (m[bl] || m[br] || m[tl] || m[tr]) continue;
+    const c = (v[bl] >= level ? 1 : 0) | (v[br] >= level ? 2 : 0) | (v[tr] >= level ? 4 : 0) | (v[tl] >= level ? 8 : 0);
+    if (c === 0 || c === 15) continue;
+    const E = [ek(i, j, 0), ek(i + 1, j, 1), ek(i, j + 1, 0), ek(i, j, 1)];   // bottom, right, top, left
+    const P = [[i, j, 0], [i + 1, j, 1], [i, j + 1, 0], [i, j, 1]];
+    const seg = (x, y) => { edgePt(E[x], ...P[x]); edgePt(E[y], ...P[y]); link(E[x], E[y]); };
+    const centre = (v[bl] + v[br] + v[tl] + v[tr]) / 4 >= level;
+    switch (c) {
+      case 1: case 14: seg(3, 0); break;
+      case 2: case 13: seg(0, 1); break;
+      case 3: case 12: seg(3, 1); break;
+      case 4: case 11: seg(1, 2); break;
+      case 6: case 9: seg(0, 2); break;
+      case 7: case 8: seg(3, 2); break;
+      case 5: if (centre) { seg(0, 1); seg(2, 3); } else { seg(3, 0); seg(1, 2); } break;
+      case 10: if (centre) { seg(3, 0); seg(1, 2); } else { seg(0, 1); seg(2, 3); } break;
+    }
+  }
+  const lines = [], used = new Set();
+  const walk = start => {
+    const out = [start]; used.add(start); let cur = start;
+    for (;;) { const n = (adj.get(cur) || []).find(k => !used.has(k)); if (n === undefined) break; used.add(n); out.push(n); cur = n; }
+    return out;
+  };
+  for (const [k, n] of adj) if (n.length === 1 && !used.has(k)) lines.push(walk(k));
+  for (const k of adj.keys()) if (!used.has(k)) { const l = walk(k); l.push(l[0]); lines.push(l); }
+  const out = [];
+  for (const l of lines) {
+    if (l.length < 4) continue;
+    if (l[0] === l[l.length - 1]) {   // drop tiny closed loops (usually noise between two stations)
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (const key of l) { const [x, y] = pt.get(key); x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      if (Math.hypot(x1 - x0, y1 - y0) < 1.0) continue;
+    }
+    let p = l.map(k => pt.get(k));
+    for (let it = 0; it < 2; it++) {   // Chaikin smoothing
+      const q = [p[0]];
+      for (let a = 0; a < p.length - 1; a++) {
+        const [x0, y0] = p[a], [x1, y1] = p[a + 1];
+        q.push([x0 * 0.75 + x1 * 0.25, y0 * 0.75 + y1 * 0.25], [x0 * 0.25 + x1 * 0.75, y0 * 0.25 + y1 * 0.75]);
+      }
+      q.push(p[p.length - 1]); p = q;
+    }
+    const f = new Float64Array(p.length * 2);
+    p.forEach(([lon, lat], a) => { f[2 * a] = lon; f[2 * a + 1] = mercY(lat); });
+    out.push(f);
+  }
+  return out;
+}
+// msg: { id, layers: { key: { pts: Float64Array [lon, lat, value, index...], qc, step, min, max } } }
+function runAll(msg) {
+  const res = {};
+  for (const key in msg.layers) {
+    const L = msg.layers[key], a = L.pts, points = [];
+    for (let i = 0; i < a.length; i += 4) points.push({ lon: a[i], lat: a[i + 1], v: a[i + 2], i: a[i + 3] });
+    if (points.length < 20) { res[key] = { sets: [], rejected: [] }; continue; }
+    const g = analyse(points, L.qc), sets = [];
+    for (let lv = Math.ceil(L.min / L.step) * L.step; lv <= L.max; lv += L.step) {
+      const lines = contour(g, lv); if (lines.length) sets.push({ level: lv, lines });
+    }
+    res[key] = { sets, rejected: g.rejected };
+  }
+  return { id: msg.id, version: msg.version, res };
+}
+if (typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope) self.onmessage = e => self.postMessage(runAll(e.data));
+</script>
 <script>
 "use strict";
 /* =============================================================== settings */
@@ -262,8 +447,9 @@ let W = 0, H = 0, DPR = 1, PHONE = false;
 let view = { cx: 133, cy: mercY(-27), k: 20 };   // k = screen px per degree of longitude
 let snapView = null;
 let stations = [], byPriority = [], dataVersion = 0, drawnNow = [];
-const S = { towns: true, showAll: false, size: 1, fixed: false, area: "Australia" };
+const S = { towns: true, showAll: false, size: 1, fixed: false, area: "Australia", contours: { iso: false, dew: false, temp: false } };
 try { Object.assign(S, JSON.parse(localStorage.getItem("aus-obs") || "{}")); } catch (e) {}
+S.contours = Object.assign({ iso: false, dew: false, temp: false }, S.contours || {});
 delete S.density;   // old setting from the previous version
 if (new URLSearchParams(location.search).has("fixed")) S.fixed = true;
 if (!AREAS[S.area]) S.area = S.fixed ? "Australia" : null;
@@ -329,6 +515,7 @@ function fullRender() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = "#eef3f7"; ctx.fillRect(0, 0, W, H);
   drawBase(view.k > 45);
+  drawContours();
   drawStations();
   if (S.towns) drawTowns();
   drawStrokes();
@@ -482,11 +669,20 @@ function syncUI() {
   document.querySelectorAll("[data-area]").forEach(b => b.classList.toggle("on", b.dataset.area === S.area));
   $("closeSel").value = CHASE[S.area] ? S.area : "";
   $("pArea").value = S.area || "";
-  $("cTowns").checked = S.towns; $("cAll").checked = S.showAll; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed;
+  $("cTowns").checked = S.towns; $("cAll").checked = S.showAll;
+  document.querySelectorAll("[data-ct]").forEach(b => { b.checked = !!S.contours[b.dataset.ct]; });
+  const nOn = Object.values(S.contours).filter(Boolean).length;
+  $("cBtn").textContent = nOn ? `Contours (${nOn}) ▾` : "Contours ▾"; $("cBtn").classList.toggle("on", nOn > 0);
+  $("legC").hidden = !nOn; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed;
   document.body.classList.toggle("free", !S.fixed);
 }
 $("cTowns").onchange = e => { S.towns = e.target.checked; save(); schedule(true); };
 $("cAll").onchange = e => { S.showAll = e.target.checked; save(); schedule(true); };
+document.querySelectorAll("[data-ct]").forEach(b => b.onchange = () => {
+  S.contours[b.dataset.ct] = b.checked; save(); syncUI(); requestContours(); schedule(true);
+});
+$("cBtn").onclick = () => $("cbox").classList.toggle("open");
+document.addEventListener("pointerdown", e => { if (!$("cbox").contains(e.target)) $("cbox").classList.remove("open"); });
 $("cSize").onchange = e => { S.size = +e.target.value; save(); schedule(true); };
 $("cFixed").onchange = e => {
   S.fixed = e.target.checked; save();
@@ -526,11 +722,94 @@ cv.addEventListener("wheel", e => {
 }, { passive: false });
 cv.addEventListener("dblclick", e => { if (S.fixed) return; const r = cv.getBoundingClientRect(); zoomAt(2, e.clientX - r.left, e.clientY - r.top); });
 
+/* =============================================================== contours */
+// The heavy maths runs in a background thread (Web Worker), so station plots never wait for it.
+const CONTOUR = {
+  iso:  { field: "mslp", step: 2, min: 950, max: 1050, qc: 3.5, color: "#1f3fbf", dash: null, fmt: v => String(v) },
+  dew:  { field: "dew", step: 3, min: -30, max: 33, qc: 0, color: "#0a8a2a", dash: [7, 4], fmt: v => v + "°" },
+  temp: { field: "temp", step: 3, min: -15, max: 51, qc: 0, color: "#d0121b", dash: [2, 3], fmt: v => v + "°" }
+};
+const CONTOUR_MAX_AGE_MIN = 60;
+let contourData = {}, worker = null, workerFn = null, reqId = 0;
+function workerFallback() { workerFn = new Function($("anSrc").textContent + "\nreturn runAll;")(); }
+function getWorker() {
+  if (worker || workerFn) return;
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob([$("anSrc").textContent], { type: "text/javascript" })));
+    worker.onmessage = e => gotContours(e.data);
+    worker.onerror = () => { worker = null; workerFallback(); requestContours(); };
+  } catch (e) { worker = null; workerFallback(); }
+}
+function requestContours() {
+  const want = Object.keys(CONTOUR).filter(k => S.contours[k] && !(contourData[k] && contourData[k].version === dataVersion));
+  if (!want.length || !stations.length) return;
+  const now = Date.now(), layers = {};
+  for (const k of want) {
+    const c = CONTOUR[k], arr = [];
+    stations.forEach((s, i) => { if (!s.stale && s.t && now - s.t < CONTOUR_MAX_AGE_MIN * 60000 && s[c.field] !== null) arr.push(s.lon, s.lat, s[c.field], i); });
+    layers[k] = { pts: new Float64Array(arr), qc: c.qc, step: c.step, min: c.min, max: c.max };
+  }
+  const msg = { id: ++reqId, version: dataVersion, layers };
+  getWorker();
+  if (worker) worker.postMessage(msg);
+  else setTimeout(() => gotContours(workerFn(msg)), 0);
+}
+function gotContours(data) {
+  if (data.version !== dataVersion) return;   // newer data has arrived since; its own request is on the way
+  for (const k in data.res) {
+    const sets = data.res[k].sets.map(st => {
+      const path = new Path2D();
+      for (const l of st.lines) { path.moveTo(l[0], l[1]); for (let a = 2; a < l.length; a += 2) path.lineTo(l[a], l[a + 1]); }
+      return { level: st.level, lines: st.lines, path };
+    });
+    contourData[k] = { version: data.version, sets, rejected: new Set(data.res[k].rejected.map(i => stations[i])) };
+  }
+  schedule(true);
+}
+function drawContours() {
+  const keys = ["temp", "dew", "iso"].filter(k => S.contours[k] && contourData[k]);
+  if (!keys.length) return;
+  const k = view.k;
+  for (const key of keys) {
+    const c = CONTOUR[key];
+    ctx.setTransform(DPR * k, 0, 0, -DPR * k, DPR * (W / 2 - view.cx * k), DPR * (H / 2 + view.cy * k));
+    ctx.strokeStyle = c.color; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.setLineDash(c.dash ? c.dash.map(x => x / k) : []);
+    for (const st of contourData[key].sets) {
+      ctx.lineWidth = (key === "iso" ? (st.level % 4 ? 1.1 : 1.9) : key === "temp" ? 1.8 : 1.4) / k;
+      ctx.stroke(st.path);
+    }
+  }
+  ctx.setLineDash([]); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // value labels along the lines
+  const boxes = [];
+  ctx.font = "bold 11px Arial, Helvetica, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const key of keys) {
+    const c = CONTOUR[key];
+    for (const st of contourData[key].sets) {
+      const txt = c.fmt(st.level), tw = ctx.measureText(txt).width + 6;
+      for (const l of st.lines) {
+        let acc = 0, next = 90, px = sx(l[0]), py = sy(l[1]);
+        for (let a = 2; a < l.length; a += 2) {
+          const x = sx(l[a]), y = sy(l[a + 1]); acc += Math.abs(x - px) + Math.abs(y - py); px = x; py = y;
+          if (acc < next) continue;
+          next = acc + 280;
+          if (x < 20 || y < 12 || x > W - 20 || y > H - 12) continue;
+          const b = [x - tw / 2, y - 7, x + tw / 2, y + 7];
+          if (boxes.some(o => !(b[2] < o[0] || b[0] > o[2] || b[3] < o[1] || b[1] > o[3]))) continue;
+          boxes.push(b);
+          ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(b[0], b[1], tw, 14);
+          ctx.fillStyle = c.color; ctx.fillText(txt, x, y + 0.5);
+        }
+      }
+    }
+  }
+}
+
 /* =============================================================== drawing */
 // Lines are stored in map coordinates, so they stay put when you zoom or move the map.
 let drawMode = false, curStroke = null, penColor = "#e0161e", penWidth = 4, strokes = [], lastCleared = null;
-try { strokes = JSON.parse(localStorage.getItem("aus-obs-draw") || "[]"); } catch (e) { strokes = []; }
-const saveDrawing = () => { try { localStorage.setItem("aus-obs-draw", JSON.stringify(strokes)); } catch (e) {} };
+const saveDrawing = () => {};   // drawings only last until you stop drawing
 function strokePath(st) {
   const p = st.p, n = p.length;
   ctx.strokeStyle = ctx.fillStyle = st.c; ctx.lineWidth = st.w;
@@ -570,9 +849,10 @@ function setDrawMode(on) {
   drawMode = on;
   document.body.classList.toggle("drawing", on);
   $("dDraw").classList.toggle("on", on);
-  $("dDraw").textContent = on ? "✏️ Drawing (click to stop)" : "✏️ Draw";
+  $("dDraw").textContent = on ? "✏️ Stop drawing" : "✏️ Draw";
   if (!PHONE) $("drawTools").hidden = !on;
   if (on) { closeCard(); hideTip(); }
+  else { if (curStroke) endStroke(false); strokes = []; lastCleared = null; schedule(true); }   // leaving drawing mode clears it
 }
 function syncPen() {
   document.querySelectorAll(".sw").forEach(b => b.classList.toggle("on", b.dataset.c === penColor));
@@ -666,7 +946,7 @@ function detailHTML(s) {
     <tr><td>Humidity</td><td>${val(s.rh, "%", 0)}</td></tr>
     <tr><td>Wind</td><td>${esc(wind.trim())}</td></tr>
     <tr><td>Gust</td><td>${s.gust === null ? "–" : Math.round(s.gust) + " kt / " + Math.round(s.gust * 1.852) + " km/h"}</td></tr>
-    <tr><td>MSLP</td><td>${val(s.mslp, " hPa")}</td></tr>
+    <tr><td>MSLP</td><td>${val(s.mslp, " hPa")}${S.contours.iso && contourData.iso && contourData.iso.rejected.has(s) ? " <i>(left out of the isobars: doesn't match nearby stations)</i>" : ""}</td></tr>
     <tr><td>Cloud</td><td>${s.cloud !== null ? s.cloud + "/8" : esc(s.cloudTxt || "not reported")}</td></tr>
     <tr><td>Rain since 9am</td><td>${val(s.rain, " mm")}</td></tr>
     <tr><td>Station</td><td>${esc(s.id)}${s.type ? " · " + esc(s.type) : ""}</td></tr></table>`;
@@ -716,7 +996,7 @@ async function load(manual) {
   stations = j.stations.map(s => {
     const t = s.time_utc ? Date.parse(s.time_utc) : NaN, a = (s.wdir || 0) * D2R;
     const st = {
-      id: s.id, name: s.name, type: s.type, lon: s.lon, my: mercY(s.lat), t: isFinite(t) ? t : null, tlocal: s.time_local,
+      id: s.id, name: s.name, type: s.type, lon: s.lon, lat: s.lat, my: mercY(s.lat), t: isFinite(t) ? t : null, tlocal: s.time_local,
       stale: !isFinite(t) || now - t > STALE_MINUTES * 60000,
       temp: s.temp, dew: s.dew, rh: s.rh, wdir: s.wdir, wcard: s.wcard, wspd: s.wspd, gust: s.gust,
       mslp: s.mslp, cloud: s.cloud, cloudTxt: s.cloud_text, rain: s.rain,
@@ -731,6 +1011,7 @@ async function load(manual) {
   });
   byPriority = stations.slice().sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
   dataVersion++;
+  setTimeout(requestContours, 0);   // stations are drawn first; contours follow when ready
   errInfo = Object.entries(j.errors || {});
   showMsg(stations.length ? "" : `<h3>BoM didn't send any data</h3><p>The last download from the Bureau came back empty. It will try again at the next update.</p>`);
   updateStatus();
