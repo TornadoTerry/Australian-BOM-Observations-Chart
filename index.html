@@ -25,21 +25,29 @@
   .warn{color:#a35f00!important} .err{color:#c0262d!important}
   body.drawing canvas{cursor:crosshair!important}
 
-  /* contours box */
-  .cbox{position:relative}
-  #cBtn.on{background:#1f4e8c;border-color:#1f4e8c;color:#fff}
-  #cPanel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:6;background:#fff;border:1px solid #b8bec5;border-radius:6px;
-    box-shadow:0 3px 12px rgba(0,0,0,.18);padding:8px 10px;min-width:260px}
-  .cbox.open #cPanel{display:block}
-  #cPanel label{display:flex;align-items:center;gap:7px;padding:3px 0;white-space:nowrap}
+  /* pop-up boxes: Contours and Settings (drop-downs on desktop, sections in the phone menu) */
+  .pop{position:relative}
+  .popbtn.on{background:#1f4e8c;border-color:#1f4e8c;color:#fff}
+  .panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:6;background:#fff;border:1px solid #b8bec5;border-radius:6px;
+    box-shadow:0 3px 12px rgba(0,0,0,.18);padding:8px 12px;min-width:270px}
+  .pop.open .panel{display:block}
+  .panel label{display:flex;align-items:center;gap:7px;padding:3px 0;white-space:nowrap}
+  .ptitle{display:none;font-weight:700;margin-bottom:4px}
+  .sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#69737d;margin:8px 0 3px}
+  .sgrp:first-of-type .sh{margin-top:2px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0}
+  .row select{min-width:110px}
   .cl{display:inline-block;width:24px;border-top:2px solid}
   .cl.dash{border-top-style:dashed} .cl.dot{border-top-style:dotted;border-top-width:3px}
-  .ctitle{display:none;font-weight:700;margin-bottom:4px}
-  .cnote{color:#69737d;font-size:11px;margin-top:4px;white-space:normal;max-width:260px}
-  body.phone #cBtn{display:none}
-  body.phone #cPanel{display:block;position:static;box-shadow:none;border-radius:8px;padding:10px 12px;min-width:0}
-  body.phone .ctitle{display:block;font-size:16px}
+  .cnote{color:#69737d;font-size:11px;margin-top:4px;white-space:normal;max-width:270px}
+  .panel a{display:inline-block;margin-top:8px}
+  body.phone .popbtn{display:none}
+  body.phone .panel{display:block;position:static;box-shadow:none;border-radius:8px;padding:10px 12px;min-width:0}
+  body.phone .ptitle{display:block;font-size:16px}
+  body.phone .sh{font-size:12px}
   body.phone .cnote{font-size:13px;max-width:none}
+  body.phone #controls .row select{width:auto;flex:0 0 150px}
+  body.phone #controls .panel a{display:block;margin-top:10px}
 
   /* drawing tools */
   #drawTools{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
@@ -145,24 +153,42 @@
 
 <!-- shared settings (sits in the desktop bar or the phone menu) -->
 <div id="controls">
-  <div class="cbox" id="cbox">
-    <button id="cBtn" type="button" title="Isobars, dew point and temperature lines">Contours ▾</button>
-    <div id="cPanel">
-      <div class="ctitle">Contours</div>
-      <label><input type="checkbox" data-ct="iso"><span class="cl" style="border-color:#1f3fbf"></span>Isobars (every 2 hPa)</label>
-      <label><input type="checkbox" data-ct="dew"><span class="cl dash" style="border-color:#0a8a2a"></span>Dew point (every 3 °C)</label>
-      <label><input type="checkbox" data-ct="temp"><span class="cl dot" style="border-color:#d0121b"></span>Temperature (every 3 °C)</label>
-      <div class="cnote">Drawn from each station's latest report in the last hour. Blank areas are too far from any station to draw.</div>
+  <div class="pop" id="cbox">
+    <button class="popbtn" id="cBtn" type="button" title="Isobars, dew point and temperature lines">Contours ▾</button>
+    <div class="panel">
+      <div class="ptitle">Contours</div>
+      <label><input type="checkbox" data-ct="iso"><span class="cl" style="border-color:#1f3fbf"></span>Isobars</label>
+      <label><input type="checkbox" data-ct="dew"><span class="cl dash" style="border-color:#0a8a2a"></span>Dew point</label>
+      <label><input type="checkbox" data-ct="temp"><span class="cl dot" style="border-color:#d0121b"></span>Temperature</label>
+      <div class="cnote">Drawn from each station's latest report in the last hour. Blank areas are too far from any station to draw. Change the spacing in Settings.</div>
     </div>
   </div>
-  <label><input type="checkbox" id="cTowns"> Town names</label>
-  <label title="Off: stations are thinned out so they don't pile up, and more appear as you zoom in"><input type="checkbox" id="cAll"> Show all stations</label>
-  <select id="cSize" title="Size of the station plots">
-    <option value="0.85">Small plots</option><option value="1">Medium plots</option><option value="1.25">Large plots</option>
-  </select>
-  <label title="Lock the map to the chosen area: no zooming or dragging"><input type="checkbox" id="cFixed"> Fixed areas</label>
+  <label title="Show or hide the station plots (handy for looking at contours on their own)"><input type="checkbox" id="cPlots"> Station plots</label>
+  <div class="pop" id="sbox">
+    <button class="popbtn" id="sBtn" type="button">⚙ Settings ▾</button>
+    <div class="panel">
+      <div class="ptitle">Settings</div>
+      <div class="sgrp"><div class="sh">Stations</div>
+        <label title="Off: stations are thinned out so they don't pile up, and more appear as you zoom in"><input type="checkbox" id="cAll"> Show all stations</label>
+        <div class="row"><span>Plot size</span><select id="cSize">
+          <option value="0.85">Small</option><option value="1">Medium</option><option value="1.25">Large</option></select></div>
+      </div>
+      <div class="sgrp"><div class="sh">Contour spacing</div>
+        <div class="row"><span>Isobars</span><select data-step="iso">
+          <option value="1">every 1 hPa</option><option value="2">every 2 hPa</option><option value="4">every 4 hPa</option></select></div>
+        <div class="row"><span>Dew point</span><select data-step="dew">
+          <option value="1">every 1 °C</option><option value="2">every 2 °C</option><option value="3">every 3 °C</option><option value="5">every 5 °C</option></select></div>
+        <div class="row"><span>Temperature</span><select data-step="temp">
+          <option value="1">every 1 °C</option><option value="2">every 2 °C</option><option value="3">every 3 °C</option><option value="5">every 5 °C</option></select></div>
+      </div>
+      <div class="sgrp"><div class="sh">Map</div>
+        <label><input type="checkbox" id="cTowns"> Town names</label>
+        <label title="Lock the map to the chosen area: no zooming or dragging"><input type="checkbox" id="cFixed"> Fixed areas (no zoom or drag)</label>
+      </div>
+      <a id="cFetch" href="#" target="_blank" rel="noopener" title="Opens GitHub: press Run workflow to fetch BoM data right now" hidden>Fetch new data now ↗</a>
+    </div>
+  </div>
   <button id="cReload" title="Load the newest data from the website">Reload data</button>
-  <a id="cFetch" href="#" target="_blank" rel="noopener" title="Opens GitHub: press Run workflow to fetch BoM data right now" hidden>Fetch new data now ↗</a>
 </div>
 
 <div id="legend">
@@ -180,7 +206,7 @@
 <div id="pstatus">loading…</div>
 <div id="scrim"></div>
 <div id="sheet">
-  <div class="sheethead"><b>Settings</b><button id="sheetDone">Done</button></div>
+  <div class="sheethead"><b>Menu</b><button id="sheetDone">Done</button></div>
   <div id="phoneSlot"></div>
   <div class="plegend">
     <div><b style="color:#d0121b">Red</b> top-left: temperature °C</div>
@@ -188,7 +214,7 @@
     <div><b>Black</b> top-right: sea-level pressure hPa</div>
     <div>Wind barbs in knots: flag 50, full line 10, half line 5</div>
     <div>Filled circle = cloud cover · Grey circle = no report in 2 h</div>
-    <div>Contours: <b style="color:#1f3fbf">blue</b> isobars (hPa), <b style="color:#0a8a2a">green dashed</b> dew point, <b style="color:#d0121b">red dotted</b> temperature (°C).</div>
+    <div>Contours: <b style="color:#1f3fbf">blue</b> isobars (hPa), <b style="color:#0a8a2a">green dashed</b> dew point, <b style="color:#d0121b">red dotted</b> temperature (°C). Spacing is in Settings.</div>
     <div>Tap a station for its details. Tap ✏️ to draw; two fingers still move and zoom the map. Drawings clear when you tap Done.</div>
     <div>Data: Bureau of Meteorology.</div>
   </div>
@@ -351,17 +377,23 @@ function contour(grid, level) {   // marching squares -> joined, smoothed lines 
   return out;
 }
 // msg: { id, layers: { key: { pts: Float64Array [lon, lat, value, index...], qc, step, min, max } } }
+const gridCache = {};   // key -> { version, grid }: changing only the spacing skips the heavy part
 function runAll(msg) {
   const res = {};
   for (const key in msg.layers) {
-    const L = msg.layers[key], a = L.pts, points = [];
-    for (let i = 0; i < a.length; i += 4) points.push({ lon: a[i], lat: a[i + 1], v: a[i + 2], i: a[i + 3] });
-    if (points.length < 20) { res[key] = { sets: [], rejected: [] }; continue; }
-    const g = analyse(points, L.qc), sets = [];
+    const L = msg.layers[key], a = L.pts;
+    let g = gridCache[key] && gridCache[key].version === msg.version ? gridCache[key].grid : null;
+    if (!g) {
+      const points = [];
+      for (let i = 0; i < a.length; i += 4) points.push({ lon: a[i], lat: a[i + 1], v: a[i + 2], i: a[i + 3] });
+      if (points.length < 20) { res[key] = { sets: [], rejected: [], step: L.step }; continue; }
+      g = analyse(points, L.qc); gridCache[key] = { version: msg.version, grid: g };
+    }
+    const sets = [];
     for (let lv = Math.ceil(L.min / L.step) * L.step; lv <= L.max; lv += L.step) {
       const lines = contour(g, lv); if (lines.length) sets.push({ level: lv, lines });
     }
-    res[key] = { sets, rejected: g.rejected };
+    res[key] = { sets, rejected: g.rejected, step: L.step };
   }
   return { id: msg.id, version: msg.version, res };
 }
@@ -447,9 +479,11 @@ let W = 0, H = 0, DPR = 1, PHONE = false;
 let view = { cx: 133, cy: mercY(-27), k: 20 };   // k = screen px per degree of longitude
 let snapView = null;
 let stations = [], byPriority = [], dataVersion = 0, drawnNow = [];
-const S = { towns: true, showAll: false, size: 1, fixed: false, area: "Australia", contours: { iso: false, dew: false, temp: false } };
+const S = { towns: true, showAll: false, plots: true, size: 1, fixed: false, area: "Australia",
+  contours: { iso: false, dew: false, temp: false }, step: { iso: 2, dew: 3, temp: 3 } };
 try { Object.assign(S, JSON.parse(localStorage.getItem("aus-obs") || "{}")); } catch (e) {}
 S.contours = Object.assign({ iso: false, dew: false, temp: false }, S.contours || {});
+S.step = Object.assign({ iso: 2, dew: 3, temp: 3 }, S.step || {});
 delete S.density;   // old setting from the previous version
 if (new URLSearchParams(location.search).has("fixed")) S.fixed = true;
 if (!AREAS[S.area]) S.area = S.fixed ? "Australia" : null;
@@ -516,7 +550,7 @@ function fullRender() {
   ctx.fillStyle = "#eef3f7"; ctx.fillRect(0, 0, W, H);
   drawBase(view.k > 45);
   drawContours();
-  drawStations();
+  if (S.plots) drawStations(); else drawnNow = [];
   if (S.towns) drawTowns();
   drawStrokes();
   sctx.globalCompositeOperation = "copy"; sctx.drawImage(cv, 0, 0);
@@ -673,7 +707,8 @@ function syncUI() {
   document.querySelectorAll("[data-ct]").forEach(b => { b.checked = !!S.contours[b.dataset.ct]; });
   const nOn = Object.values(S.contours).filter(Boolean).length;
   $("cBtn").textContent = nOn ? `Contours (${nOn}) ▾` : "Contours ▾"; $("cBtn").classList.toggle("on", nOn > 0);
-  $("legC").hidden = !nOn; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed;
+  $("legC").hidden = !nOn; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed; $("cPlots").checked = S.plots;
+  document.querySelectorAll("[data-step]").forEach(sel => { sel.value = String(S.step[sel.dataset.step]); });
   document.body.classList.toggle("free", !S.fixed);
 }
 $("cTowns").onchange = e => { S.towns = e.target.checked; save(); schedule(true); };
@@ -681,8 +716,19 @@ $("cAll").onchange = e => { S.showAll = e.target.checked; save(); schedule(true)
 document.querySelectorAll("[data-ct]").forEach(b => b.onchange = () => {
   S.contours[b.dataset.ct] = b.checked; save(); syncUI(); requestContours(); schedule(true);
 });
-$("cBtn").onclick = () => $("cbox").classList.toggle("open");
-document.addEventListener("pointerdown", e => { if (!$("cbox").contains(e.target)) $("cbox").classList.remove("open"); });
+$("cPlots").onchange = e => { S.plots = e.target.checked; save(); if (!S.plots) { hideTip(); closeCard(); } schedule(true); };
+document.querySelectorAll("[data-step]").forEach(sel => sel.onchange = () => {
+  S.step[sel.dataset.step] = +sel.value; save(); requestContours(); schedule(true);
+});
+// desktop drop-downs: open one at a time, close when clicking elsewhere
+document.querySelectorAll(".pop").forEach(box => box.querySelector(".popbtn").onclick = () => {
+  const open = !box.classList.contains("open");
+  document.querySelectorAll(".pop").forEach(o => o.classList.remove("open"));
+  box.classList.toggle("open", open);
+});
+document.addEventListener("pointerdown", e => {
+  document.querySelectorAll(".pop").forEach(o => { if (!o.contains(e.target)) o.classList.remove("open"); });
+});
 $("cSize").onchange = e => { S.size = +e.target.value; save(); schedule(true); };
 $("cFixed").onchange = e => {
   S.fixed = e.target.checked; save();
@@ -725,9 +771,9 @@ cv.addEventListener("dblclick", e => { if (S.fixed) return; const r = cv.getBoun
 /* =============================================================== contours */
 // The heavy maths runs in a background thread (Web Worker), so station plots never wait for it.
 const CONTOUR = {
-  iso:  { field: "mslp", step: 2, min: 950, max: 1050, qc: 3.5, color: "#1f3fbf", dash: null, fmt: v => String(v) },
-  dew:  { field: "dew", step: 3, min: -30, max: 33, qc: 0, color: "#0a8a2a", dash: [7, 4], fmt: v => v + "°" },
-  temp: { field: "temp", step: 3, min: -15, max: 51, qc: 0, color: "#d0121b", dash: [2, 3], fmt: v => v + "°" }
+  iso:  { field: "mslp", min: 950, max: 1050, qc: 3.5, color: "#1f3fbf", dash: null, fmt: v => String(v) },
+  dew:  { field: "dew", min: -30, max: 33, qc: 0, color: "#0a8a2a", dash: [7, 4], fmt: v => v + "°" },
+  temp: { field: "temp", min: -15, max: 51, qc: 0, color: "#d0121b", dash: [2, 3], fmt: v => v + "°" }
 };
 const CONTOUR_MAX_AGE_MIN = 60;
 let contourData = {}, worker = null, workerFn = null, reqId = 0;
@@ -741,13 +787,14 @@ function getWorker() {
   } catch (e) { worker = null; workerFallback(); }
 }
 function requestContours() {
-  const want = Object.keys(CONTOUR).filter(k => S.contours[k] && !(contourData[k] && contourData[k].version === dataVersion));
+  const want = Object.keys(CONTOUR).filter(k => S.contours[k] &&
+    !(contourData[k] && contourData[k].version === dataVersion && contourData[k].step === S.step[k]));
   if (!want.length || !stations.length) return;
   const now = Date.now(), layers = {};
   for (const k of want) {
     const c = CONTOUR[k], arr = [];
     stations.forEach((s, i) => { if (!s.stale && s.t && now - s.t < CONTOUR_MAX_AGE_MIN * 60000 && s[c.field] !== null) arr.push(s.lon, s.lat, s[c.field], i); });
-    layers[k] = { pts: new Float64Array(arr), qc: c.qc, step: c.step, min: c.min, max: c.max };
+    layers[k] = { pts: new Float64Array(arr), qc: c.qc, step: S.step[k], min: c.min, max: c.max };
   }
   const msg = { id: ++reqId, version: dataVersion, layers };
   getWorker();
@@ -762,7 +809,7 @@ function gotContours(data) {
       for (const l of st.lines) { path.moveTo(l[0], l[1]); for (let a = 2; a < l.length; a += 2) path.lineTo(l[a], l[a + 1]); }
       return { level: st.level, lines: st.lines, path };
     });
-    contourData[k] = { version: data.version, sets, rejected: new Set(data.res[k].rejected.map(i => stations[i])) };
+    contourData[k] = { version: data.version, step: data.res[k].step, sets, rejected: new Set(data.res[k].rejected.map(i => stations[i])) };
   }
   schedule(true);
 }
@@ -776,7 +823,8 @@ function drawContours() {
     ctx.strokeStyle = c.color; ctx.lineJoin = "round"; ctx.lineCap = "round";
     ctx.setLineDash(c.dash ? c.dash.map(x => x / k) : []);
     for (const st of contourData[key].sets) {
-      ctx.lineWidth = (key === "iso" ? (st.level % 4 ? 1.1 : 1.9) : key === "temp" ? 1.8 : 1.4) / k;
+      const step = contourData[key].step;
+      ctx.lineWidth = (key === "iso" ? (step < 4 && st.level % 4 ? 1.0 : 1.8) : key === "temp" ? 1.8 : 1.4) / k;
       ctx.stroke(st.path);
     }
   }
@@ -793,7 +841,7 @@ function drawContours() {
         for (let a = 2; a < l.length; a += 2) {
           const x = sx(l[a]), y = sy(l[a + 1]); acc += Math.abs(x - px) + Math.abs(y - py); px = x; py = y;
           if (acc < next) continue;
-          next = acc + 280;
+          next = acc + (contourData[key].step === 1 ? 380 : 280);
           if (x < 20 || y < 12 || x > W - 20 || y > H - 12) continue;
           const b = [x - tw / 2, y - 7, x + tw / 2, y + 7];
           if (boxes.some(o => !(b[2] < o[0] || b[0] > o[2] || b[3] < o[1] || b[1] > o[3]))) continue;
