@@ -23,6 +23,19 @@
   body.free canvas{cursor:grab}
   body.free canvas.drag{cursor:grabbing}
   .warn{color:#a35f00!important} .err{color:#c0262d!important}
+  body.drawing canvas{cursor:crosshair!important}
+
+  /* drawing tools */
+  #drawTools{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+  .sw{width:24px;height:24px;border-radius:50%;padding:0;background:var(--c);border:2px solid #fff;box-shadow:0 0 0 1px #9aa2ab}
+  .sw:hover{background:var(--c)}
+  button.sw.on,button.sw:hover{background:var(--c);border-color:#fff}
+  button.sw.on{box-shadow:0 0 0 3px #1b1f23}
+  .th{width:34px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+  .th i{display:block;width:18px;background:#1b1f23;border-radius:4px}
+  .th.on{background:#dfe7f3;border-color:#1f4e8c}
+  .tsep{width:1px;height:22px;background:#c8cdd3;margin:0 3px}
+  #dDraw.on{background:#c0262d;border-color:#c0262d}
 
   /* ---------- desktop layout ---------- */
   #bar{position:fixed;top:0;left:0;right:0;z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:5px 12px;
@@ -51,7 +64,7 @@
   #ptop select{flex:1;min-width:0;height:44px;font-size:16px;border-radius:10px;padding:0 10px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
   #ptop button{flex:none;width:52px;height:44px;font-size:22px;line-height:1;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
   body.phone #pstatus{display:block;position:fixed;z-index:2;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));
-    max-width:calc(100% - 16px);background:rgba(255,255,255,.93);border-radius:8px;padding:5px 9px;font-size:12px;color:#4b5560;
+    max-width:calc(100% - 84px);background:rgba(255,255,255,.93);border-radius:8px;padding:5px 9px;font-size:12px;color:#4b5560;
     box-shadow:0 1px 3px rgba(0,0,0,.2)}
   #scrim{position:fixed;inset:0;z-index:4;background:rgba(0,0,0,.28)}
   #sheet{position:fixed;z-index:5;left:0;right:0;bottom:0;max-height:85%;overflow:auto;background:#fff;border-radius:14px 14px 0 0;
@@ -70,6 +83,21 @@
     box-shadow:0 2px 14px rgba(0,0,0,.3);padding:12px 14px;font-size:14px}
   body.card-open #card{display:block}
   body.card-open #pstatus{display:none}
+  /* phone drawing: pencil button + toolbar */
+  #pDraw,#pDrawBar{display:none}
+  body.phone #pDraw{display:block;position:fixed;z-index:3;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:54px;height:54px;
+    border-radius:50%;font-size:24px;padding:0;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  body.phone.drawing #pDraw,body.phone.card-open #pDraw{display:none}
+  body.phone.drawing #pDrawBar{display:flex;position:fixed;z-index:3;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));
+    flex-wrap:wrap;align-items:center;gap:8px;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.3);padding:10px}
+  body.phone.drawing #pstatus{display:none}
+  body.phone #pDrawSlot,body.phone #drawTools{display:contents}
+  #pDrawDone{margin-left:auto}
+  body.phone .sw{width:34px;height:34px}
+  body.phone .th{width:44px;height:38px}
+  body.phone #drawTools button:not(.sw):not(.th),#pDrawDone{height:38px;font-size:15px;border-radius:8px}
+  #pDrawDone{background:#1f4e8c;color:#fff;border-color:#1f4e8c;padding:0 14px}
+  body.phone .tsep{display:none}
   #card .x{position:absolute;right:6px;top:6px;border:none;background:none;font-size:22px;width:40px;height:40px;padding:0}
 
   #msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;width:min(480px,88vw);max-height:80%;overflow:auto;
@@ -84,6 +112,7 @@
   <div class="grp" id="stateBtns"><span class="lbl">Area:</span></div>
   <div class="grp"><span class="lbl">Close-up:</span><select id="closeSel"></select></div>
   <div id="deskSlot"></div>
+  <div class="grp"><button id="dDraw" title="Draw on the map">✏️ Draw</button><span id="deskDrawSlot"></span></div>
   <span id="status">loading…</span>
 </div>
 <!-- phone top bar -->
@@ -101,9 +130,7 @@
 <!-- shared settings (sits in the desktop bar or the phone menu) -->
 <div id="controls">
   <label><input type="checkbox" id="cTowns"> Town names</label>
-  <select id="cDensity" title="Show every station, or thin them out so more appear as you zoom in">
-    <option value="all">All stations</option><option value="thin">Thin out (more appear as you zoom in)</option>
-  </select>
+  <label title="Off: stations are thinned out so they don't pile up, and more appear as you zoom in"><input type="checkbox" id="cAll"> Show all stations</label>
   <select id="cSize" title="Size of the station plots">
     <option value="0.85">Small plots</option><option value="1">Medium plots</option><option value="1.25">Large plots</option>
   </select>
@@ -134,8 +161,24 @@
     <div><b>Black</b> top-right: sea-level pressure hPa</div>
     <div>Wind barbs in knots: flag 50, full line 10, half line 5</div>
     <div>Filled circle = cloud cover · Grey circle = no report in 2 h</div>
-    <div>Tap a station for its details. Data: Bureau of Meteorology.</div>
+    <div>Tap a station for its details. Tap ✏️ to draw; two fingers still move and zoom the map while drawing.</div>
+    <div>Data: Bureau of Meteorology.</div>
   </div>
+</div>
+<button id="pDraw" aria-label="Draw on the map">✏️</button>
+<div id="pDrawBar"><span id="pDrawSlot"></span><button id="pDrawDone">Done</button></div>
+<div id="drawTools" hidden>
+  <button class="sw" data-c="#e0161e" style="--c:#e0161e" title="Red"></button>
+  <button class="sw" data-c="#1565d8" style="--c:#1565d8" title="Blue"></button>
+  <button class="sw" data-c="#8e24aa" style="--c:#8e24aa" title="Purple"></button>
+  <button class="sw" data-c="#111111" style="--c:#111111" title="Black"></button>
+  <span class="tsep"></span>
+  <button class="th" data-w="2" title="Thin"><i style="height:2px"></i></button>
+  <button class="th" data-w="4" title="Medium"><i style="height:4px"></i></button>
+  <button class="th" data-w="7" title="Thick"><i style="height:7px"></i></button>
+  <span class="tsep"></span>
+  <button id="dUndo" title="Undo the last line">Undo</button>
+  <button id="dClear" title="Remove all drawing">Clear</button>
 </div>
 <div id="card" class="det"><button class="x" aria-label="Close">×</button><div id="cardBody"></div></div>
 
@@ -219,8 +262,9 @@ let W = 0, H = 0, DPR = 1, PHONE = false;
 let view = { cx: 133, cy: mercY(-27), k: 20 };   // k = screen px per degree of longitude
 let snapView = null;
 let stations = [], byPriority = [], dataVersion = 0, drawnNow = [];
-const S = { towns: true, density: null, size: 1, fixed: false, area: "Australia" };
+const S = { towns: true, showAll: false, size: 1, fixed: false, area: "Australia" };
 try { Object.assign(S, JSON.parse(localStorage.getItem("aus-obs") || "{}")); } catch (e) {}
+delete S.density;   // old setting from the previous version
 if (new URLSearchParams(location.search).has("fixed")) S.fixed = true;
 if (!AREAS[S.area]) S.area = S.fixed ? "Australia" : null;
 const save = () => { try { localStorage.setItem("aus-obs", JSON.stringify(S)); } catch (e) {} };
@@ -235,7 +279,8 @@ function applyLayout() {
   document.body.classList.toggle("phone", PHONE);
   document.body.classList.toggle("desk", !PHONE);
   (PHONE ? $("phoneSlot") : $("deskSlot")).appendChild($("controls"));
-  if (S.density === null) S.density = PHONE ? "thin" : "all";
+  (PHONE ? $("pDrawSlot") : $("deskDrawSlot")).appendChild($("drawTools"));
+  $("drawTools").hidden = !PHONE && !drawMode;
   if (!PHONE) closeSheet(), closeCard();
   sizeCanvas();
 }
@@ -286,6 +331,7 @@ function fullRender() {
   drawBase(view.k > 45);
   drawStations();
   if (S.towns) drawTowns();
+  drawStrokes();
   sctx.globalCompositeOperation = "copy"; sctx.drawImage(cv, 0, 0);
   snapView = { ...view };
 }
@@ -297,7 +343,7 @@ let thin = { key: "", set: null };
 function thinSet() {
   const lvl = Math.round(Math.log2(view.k) * 4) / 4, key = lvl + "|" + S.size + "|" + dataVersion;
   if (thin.key === key) return thin.set;
-  const kq = Math.pow(2, lvl), gx = 34 * S.size, gy = 22 * S.size, cells = new Map(), set = new Set();
+  const kq = Math.pow(2, lvl), gx = 27 * S.size, gy = 17 * S.size, cells = new Map(), set = new Set();
   for (const s of byPriority) {
     const x = s.lon * kq, y = -s.my * kq, cx = Math.floor(x / gx), cy = Math.floor(y / gy);
     let ok = true;
@@ -317,7 +363,7 @@ function thinSet() {
 /* =============================================================== station model */
 function drawStations() {
   const f = S.size, pad = 40 * f, r = 3.4 * f, L = 21 * f, FL = 8.5 * f, GAP = 3.6 * f;
-  const chosen = S.density === "thin" ? thinSet() : null;
+  const chosen = S.showAll ? null : thinSet();
   const live = [], old = [], dots = new Path2D();
   for (const s of stations) {
     const x = sx(s.lon), y = sy(s.my);
@@ -436,11 +482,11 @@ function syncUI() {
   document.querySelectorAll("[data-area]").forEach(b => b.classList.toggle("on", b.dataset.area === S.area));
   $("closeSel").value = CHASE[S.area] ? S.area : "";
   $("pArea").value = S.area || "";
-  $("cTowns").checked = S.towns; $("cDensity").value = S.density; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed;
+  $("cTowns").checked = S.towns; $("cAll").checked = S.showAll; $("cSize").value = String(S.size); $("cFixed").checked = S.fixed;
   document.body.classList.toggle("free", !S.fixed);
 }
 $("cTowns").onchange = e => { S.towns = e.target.checked; save(); schedule(true); };
-$("cDensity").onchange = e => { S.density = e.target.value; save(); schedule(true); };
+$("cAll").onchange = e => { S.showAll = e.target.checked; save(); schedule(true); };
 $("cSize").onchange = e => { S.size = +e.target.value; save(); schedule(true); };
 $("cFixed").onchange = e => {
   S.fixed = e.target.checked; save();
@@ -480,37 +526,119 @@ cv.addEventListener("wheel", e => {
 }, { passive: false });
 cv.addEventListener("dblclick", e => { if (S.fixed) return; const r = cv.getBoundingClientRect(); zoomAt(2, e.clientX - r.left, e.clientY - r.top); });
 
+/* =============================================================== drawing */
+// Lines are stored in map coordinates, so they stay put when you zoom or move the map.
+let drawMode = false, curStroke = null, penColor = "#e0161e", penWidth = 4, strokes = [], lastCleared = null;
+try { strokes = JSON.parse(localStorage.getItem("aus-obs-draw") || "[]"); } catch (e) { strokes = []; }
+const saveDrawing = () => { try { localStorage.setItem("aus-obs-draw", JSON.stringify(strokes)); } catch (e) {} };
+function strokePath(st) {
+  const p = st.p, n = p.length;
+  ctx.strokeStyle = ctx.fillStyle = st.c; ctx.lineWidth = st.w;
+  if (n === 2) { ctx.beginPath(); ctx.arc(sx(p[0]), sy(p[1]), st.w * 0.8, 0, 2 * Math.PI); ctx.fill(); return; }
+  ctx.beginPath(); ctx.moveTo(sx(p[0]), sy(p[1]));
+  for (let i = 2; i < n; i += 2) ctx.lineTo(sx(p[i]), sy(p[i + 1]));
+  ctx.stroke();
+}
+function drawStrokes() {
+  if (!strokes.length) return;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const st of strokes) strokePath(st);
+}
+function eventXY(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function startStroke(e) {
+  const [x, y] = eventXY(e);
+  curStroke = { c: penColor, w: penWidth, p: [view.cx + (x - W / 2) / view.k, view.cy - (y - H / 2) / view.k], lx: x, ly: y };
+  strokes.push(curStroke);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); strokePath(curStroke);
+}
+function extendStroke(e) {
+  const [x, y] = eventXY(e);
+  if (Math.abs(x - curStroke.lx) + Math.abs(y - curStroke.ly) < 2) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.strokeStyle = curStroke.c; ctx.lineWidth = curStroke.w; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(curStroke.lx, curStroke.ly); ctx.lineTo(x, y); ctx.stroke();   // draw just the new bit
+  curStroke.p.push(view.cx + (x - W / 2) / view.k, view.cy - (y - H / 2) / view.k);
+  curStroke.lx = x; curStroke.ly = y;
+}
+function endStroke(keep) {
+  if (!curStroke) return;
+  if (!keep) strokes.pop();
+  delete curStroke.lx; delete curStroke.ly;
+  curStroke = null; lastCleared = null; saveDrawing(); schedule(true);
+}
+function setDrawMode(on) {
+  drawMode = on;
+  document.body.classList.toggle("drawing", on);
+  $("dDraw").classList.toggle("on", on);
+  $("dDraw").textContent = on ? "✏️ Drawing (click to stop)" : "✏️ Draw";
+  if (!PHONE) $("drawTools").hidden = !on;
+  if (on) { closeCard(); hideTip(); }
+}
+function syncPen() {
+  document.querySelectorAll(".sw").forEach(b => b.classList.toggle("on", b.dataset.c === penColor));
+  document.querySelectorAll(".th").forEach(b => b.classList.toggle("on", +b.dataset.w === penWidth));
+}
+document.querySelectorAll(".sw").forEach(b => b.onclick = () => { penColor = b.dataset.c; syncPen(); });
+document.querySelectorAll(".th").forEach(b => b.onclick = () => { penWidth = +b.dataset.w; syncPen(); });
+$("dDraw").onclick = () => setDrawMode(!drawMode);
+$("pDraw").onclick = () => setDrawMode(true);
+$("pDrawDone").onclick = () => setDrawMode(false);
+$("dUndo").onclick = () => {
+  if (strokes.length) strokes.pop(); else if (lastCleared) { strokes = lastCleared; lastCleared = null; }
+  saveDrawing(); schedule(true);
+};
+$("dClear").onclick = () => { if (strokes.length) { lastCleared = strokes; strokes = []; saveDrawing(); schedule(true); } };
+syncPen();
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && drawMode) setDrawMode(false);
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !/INPUT|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $("dUndo").click(); }
+});
+
+/* =============================================================== pointer input */
+// Normal: drag to move, pinch/scroll to zoom, tap a station for details.
+// Drawing: one finger/mouse draws; two fingers still move and zoom the map.
 const pts = new Map();
 let moved = false, pinchD = 0, pinchM = null, downAt = null;
 cv.addEventListener("pointerdown", e => {
-  downAt = { x: e.clientX, y: e.clientY }; moved = false;
-  if (S.fixed) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
   cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  cv.classList.add("drag");
-  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); pinchM = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+  if (pts.size === 1) {
+    downAt = { x: e.clientX, y: e.clientY }; moved = false;
+    if (drawMode) { startStroke(e); return; }
+  }
+  if (pts.size === 2) {
+    if (curStroke) endStroke(curStroke.p.length > 16);   // a second finger means "move the map", not a line
+    const [a, b] = [...pts.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); pinchM = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  if (!S.fixed && !drawMode) cv.classList.add("drag");
 });
 cv.addEventListener("pointermove", e => {
   const p = pts.get(e.pointerId);
-  if (!p) { if (e.pointerType === "mouse" && !PHONE) hover(e); return; }
+  if (!p) { if (e.pointerType === "mouse" && !PHONE && !drawMode) hover(e); return; }
   if (downAt && Math.abs(e.clientX - downAt.x) + Math.abs(e.clientY - downAt.y) > 6) moved = true;
+  if (curStroke) { extendStroke(e); p.x = e.clientX; p.y = e.clientY; return; }
   if (pts.size === 1) {
-    view.cx -= (e.clientX - p.x) / view.k; view.cy += (e.clientY - p.y) / view.k;
+    if (!S.fixed && !drawMode) {
+      view.cx -= (e.clientX - p.x) / view.k; view.cy += (e.clientY - p.y) / view.k;
+      if (moved) { clearArea(); hideTip(); interacted(); }
+    }
     p.x = e.clientX; p.y = e.clientY;
-    if (moved) { clearArea(); hideTip(); interacted(); }
   } else if (pts.size === 2) {
     p.x = e.clientX; p.y = e.clientY;
+    if (S.fixed) return;
     const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const r = cv.getBoundingClientRect();
-    view.cx -= (m.x - pinchM.x) / view.k; view.cy += (m.y - pinchM.y) / view.k;
-    if (pinchD) zoomAt(d / pinchD, m.x - r.left, m.y - r.top); else interacted();
+    if (pinchM) { view.cx -= (m.x - pinchM.x) / view.k; view.cy += (m.y - pinchM.y) / view.k; }
+    if (pinchD) zoomAt(d / pinchD, m.x - r.left, m.y - r.top); else { clearArea(); interacted(); }
     pinchD = d; pinchM = m; moved = true;
   }
 });
 function endPointer(e) {
-  pts.delete(e.pointerId); pinchD = 0;
-  if (pts.size === 1) { const [q] = [...pts.values()]; pinchM = null; }
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId); pinchD = 0; pinchM = null;
+  if (curStroke && !pts.size) { endStroke(true); return; }
   if (!pts.size) cv.classList.remove("drag");
-  if (e.type === "pointerup" && !moved && !pts.size) tapAt(e);
+  if (e.type === "pointerup" && !moved && !pts.size && !drawMode) tapAt(e);
 }
 cv.addEventListener("pointerup", endPointer);
 cv.addEventListener("pointercancel", endPointer);
