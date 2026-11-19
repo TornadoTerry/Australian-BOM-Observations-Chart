@@ -1,0 +1,36 @@
+name: Update observations
+
+on:
+  schedule:
+    - cron: "4-59/10 * * * *"   # every 10 minutes, just after BoM updates its files
+  workflow_dispatch:             # adds the "Run workflow" button for fetching on demand
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download BoM observations
+        run: python3 fetch_obs.py site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - name: Publish to the website
+        id: deploy
+        uses: actions/deploy-pages@v5
